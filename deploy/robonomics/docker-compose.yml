@@ -1,0 +1,142 @@
+# statescan-v2 for Robonomics Polkadot (para 3388) — scan.robonomics.network
+# Deployed on the server as a clone of this repo; endpoints come from deploy/robonomics/.env (see .env.example).
+# Run from the repo root: docker compose -f deploy/robonomics/docker-compose.yml ...
+# MongoDB data lives in <repo>/data/mongo (ignored by git); paths below are relative to this file.
+name: statescan
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "3"
+
+x-backend: &backend
+  image: statescan-robonomics-backend:797a560
+  restart: unless-stopped
+  logging: *logging
+  depends_on:
+    - mongodb
+  networks:
+    - statescan
+    - robonomics
+  environment: &env
+    CHAIN: robonomics
+    WS_ENDPOINT: ${WS_ENDPOINT:?set WS_ENDPOINT in deploy/robonomics/.env}
+    # parallel blocks per step; 50 drove the archive node to ~1000% CPU on a shared host
+    SCAN_STEP: "10"
+    USE_META: "0"
+    USE_KNOWN_HEIGHTS: "0"
+    SIMPLE_MODE: "0"
+    LOG_LEVEL: info
+    # anything but "production"/"test": scan-common then logs to stdout (rotated by docker) instead of unrotated log/*.log files
+    NODE_ENV: docker
+    MONGO_BLOCK_SCAN_URL: &mongo mongodb://mongodb:27017
+    MONGO_BLOCK_SCAN_NAME: statescan-robonomics-block
+    MONGO_ACCOUNT_SCAN_URL: *mongo
+    MONGO_ACCOUNT_SCAN_NAME: statescan-robonomics-account
+    MONGO_RUNTIME_SCAN_URL: *mongo
+    MONGO_RUNTIME_SCAN_NAME: statescan-robonomics-runtime
+    MONGO_MULTISIG_SCAN_URL: *mongo
+    MONGO_MULTISIG_SCAN_NAME: statescan-robonomics-multisig
+    MONGO_PROXY_SCAN_URL: *mongo
+    MONGO_PROXY_SCAN_NAME: statescan-robonomics-proxy
+    MONGO_VESTING_SCAN_URL: *mongo
+    MONGO_VESTING_SCAN_NAME: statescan-robonomics-vesting
+    MONGO_DB_KNOWN_HEIGHTS_URL: *mongo
+    MONGO_DB_KNOWN_HEIGHTS_NAME: statescan-robonomics-known-heights
+    # required by the REST server even without assets/uniques pallets (stay empty)
+    MONGO_ASSET_SCAN_URL: *mongo
+    MONGO_ASSET_SCAN_NAME: statescan-robonomics-asset
+    MONGO_UNIQUES_SCAN_URL: *mongo
+    MONGO_UNIQUES_SCAN_NAME: statescan-robonomics-uniques
+    # V8 heap limit (Node defaults to ~50% of mem_limit, too small for the scanners)
+    NODE_OPTIONS: --max-old-space-size=600
+
+services:
+  mongodb:
+    image: mongo:8.0
+    container_name: statescan-mongodb
+    restart: unless-stopped
+    command: ["mongod", "--wiredTigerCacheSizeGB", "3"]
+    mem_limit: 4g
+    logging: *logging
+    volumes:
+      - ../../data/mongo:/data/db
+    networks:
+      - statescan
+
+  block-scan:
+    <<: *backend
+    container_name: statescan-block-scan
+    working_dir: /app/packages/block-scan
+    command: ["node", "--max-old-space-size=1200", "src/index.js"]
+    mem_limit: 1536m
+
+  account-scan:
+    <<: *backend
+    container_name: statescan-account-scan
+    working_dir: /app/packages/account-scan
+    command: ["node", "src/index.js"]
+    mem_limit: 1g  # heap 600m + polkadot.js/native overhead
+
+  runtime-scan:
+    <<: *backend
+    container_name: statescan-runtime-scan
+    working_dir: /app/packages/runtime-scan
+    command: ["node", "src/index.js"]
+    mem_limit: 768m
+
+  multisig-scan:
+    <<: *backend
+    container_name: statescan-multisig-scan
+    working_dir: /app/packages/multisig-scan
+    command: ["node", "--max-old-space-size=1200", "src/index.js"]
+    mem_limit: 1536m  # heap 600m OOM'd on dense blocks
+
+  proxy-scan:
+    <<: *backend
+    container_name: statescan-proxy-scan
+    working_dir: /app/packages/pallet-proxy-scan
+    command: ["node", "src/index.js"]
+    mem_limit: 1g  # heap 600m + polkadot.js/native overhead
+
+  vesting-scan:
+    <<: *backend
+    container_name: statescan-vesting-scan
+    working_dir: /app/packages/vesting-scan
+    command: ["node", "src/index.js"]
+    mem_limit: 768m
+
+  server:
+    <<: *backend
+    container_name: statescan-server
+    working_dir: /app/packages/server
+    command: ["node", "--max-old-space-size=400", "src/index.js"]
+    mem_limit: 512m
+    networks:
+      - statescan
+    environment:
+      <<: *env
+      PORT: "5010"
+    ports:
+      - "127.0.0.1:5010:5010"
+
+  graphql-server:
+    <<: *backend
+    container_name: statescan-graphql-server
+    working_dir: /app/packages/graphql-server
+    command: ["node", "--max-old-space-size=400", "src/index.js"]
+    mem_limit: 512m
+    environment:
+      <<: *env
+      PORT: "7100"
+      WS_ENDPOINTS: ${WS_ENDPOINT}
+    ports:
+      - "127.0.0.1:7100:7100"
+
+networks:
+  statescan:
+    name: statescan
+  robonomics:
+    name: robonomics-docker-network
+    external: true

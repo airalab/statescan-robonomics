@@ -118,3 +118,7 @@ dist
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# Robonomics deployment: MongoDB data of the server clone
+/data/
+deploy/robonomics/.env

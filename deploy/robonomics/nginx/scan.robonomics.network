@@ -1,0 +1,56 @@
+# statescan-v2 for Robonomics Polkadot (deploy/robonomics in airalab/statescan-robonomics).
+# If other vhosts on the host listen on specific addresses, use the same explicit addresses here.
+server {
+        listen 80;
+        listen [::]:80;
+        server_name "scan.robonomics.network";
+        return 301 https://$host$request_uri;
+}
+server {
+        listen 443 ssl;
+        listen [::]:443 ssl;
+
+        server_name "scan.robonomics.network";
+
+        acme_certificate robonomics;
+
+        ssl_certificate       $acme_certificate;
+        ssl_certificate_key   $acme_certificate_key;
+        ssl_certificate_cache max=2;
+
+        access_log  /var/log/nginx/scan.robonomics.network_access.log main;
+        error_log /var/log/nginx/scan.robonomics.network_error.log warn;
+
+        root /var/www/scan.robonomics.network;
+        index index.html;
+
+        gzip on;
+        gzip_types text/css application/javascript application/json image/svg+xml;
+
+        # REST API (statescan-server)
+        location /api/ {
+                proxy_pass http://127.0.0.1:5010/;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+
+        # GraphQL (statescan-graphql-server)
+        location = /graphql {
+                proxy_pass http://127.0.0.1:7100/graphql;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+
+        location /static/ {
+                expires 30d;
+                add_header Cache-Control "public, immutable";
+        }
+
+        # SPA with browser router
+        location / {
+                try_files $uri /index.html;
+                add_header Cache-Control "no-cache";
+        }
+}
