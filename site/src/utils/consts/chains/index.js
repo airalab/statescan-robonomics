@@ -34,6 +34,7 @@ import frequency from "./frequency";
 import bulletinPolkadot from "./bulletin-polkadot";
 import bulletinPaseo from "./bulletin-paseo";
 import ethereum from "./ethereum";
+import robonomics from "./robonomics";
 
 const chains = {
   polkadot,
@@ -76,6 +77,7 @@ const chains = {
   // "cere-testnet": cereTestnet,
   // "fintra-testnet": fintraTestnet,
   frequency,
+  robonomics,
   // "datahaven-testnet": datahavenTestnet,
   ethereum,
 };

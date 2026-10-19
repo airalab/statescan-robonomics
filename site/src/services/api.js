@@ -9,7 +9,9 @@ class Api {
   }
 
   fetch = (path, params = {}, options) => {
-    const url = new URL(path, this.endpoint);
+    // Resolve relative to the endpoint so an API under a sub-path (e.g. /api/) keeps it:
+    // new URL("/blocks", "https://host/api/") would drop "/api".
+    const url = new URL(path.replace(/^\/+/, ""), this.endpoint);
     for (const key of Object.keys(params)) {
       url.searchParams.set(paramsKeyConvert(key), params[key]);
     }
